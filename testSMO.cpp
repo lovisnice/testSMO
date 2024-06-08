@@ -168,6 +168,18 @@ public:
         std::cout << std::endl;
     }
 
+    // Function to clear the queue and mark remaining requests as lost
+    void clear_queue() {
+        std::cout << "Lost Requests in Queue: ";
+        while (!queue.empty()) {
+            const Request& req = queue.front();
+            std::cout << "(" << req.get_sequence_number() << ", " << req.get_priority() << ", " << req.get_phase() << ") ";
+            queue.pop();
+            stream.set_lost_requests();
+        }
+        std::cout << std::endl;
+    }
+
 private:
     std::queue<Request> queue;
     Stream& stream; // Reference to the stream
@@ -230,7 +242,8 @@ public:
     void process_requests_in_phase() {
         int total_processed = 0;
 
-        for (auto& queue : queues) {
+        for (int i = queues.size() - 1; i >= 0; --i) {
+            auto& queue = queues[i];
             if (!queue.empty() && total_processed < num_channels) {
                 for (auto& channel : channels) {
                     if (!queue.empty() && total_processed < num_channels) {
@@ -241,6 +254,14 @@ public:
                     }
                 }
             }
+        }
+    }
+
+    void clear_queues_in_phase()
+    {
+        for (auto& queue : queues) {
+            queue.clear_queue();
+
         }
     }
 
@@ -268,9 +289,8 @@ int main() {
     Generator generator3(stream);
 
     Phase phase(stream, 1, 3, 4, 2);
-    int z = 0;
-    // Generate several requests
-    while (z != 1) {
+    for (int i = 0; i < 20; ++i) {
+        // Generate several requests
         generator1.generate_request();
         generator2.generate_request();
         generator3.generate_request();
@@ -279,7 +299,7 @@ int main() {
         stream.display_requests();
 
         // Create a Phase object with 3 queues, each with a maximum of 4 requests, and 2 channels
-        
+
         phase.distribute_to_queues();
         phase.display_all_queues(); // Display queues after distribution
 
@@ -287,14 +307,16 @@ int main() {
         phase.process_requests_in_phase();
         phase.display_all_queues(); // Display queues after processing
 
-        std::cout << "Lost requests: " << stream.get_lost_requests() << std::endl;
-        std::cout << "Processed requests: " << stream.get_processed_requests() << std::endl;
-
-        std::cin >> z;
+        // Clear remaining requests and mark them as lost
+        std::cout << "_____________________________" << std::endl;
     }
-    // Clear remaining requests and mark them as lost
+
+    // Clear remaining requests and mark them as lost for all queues
+    phase.clear_queues_in_phase();
     stream.clear_requests();
-    
+    std::cout << "Lost requests: " << stream.get_lost_requests() << std::endl;
+    std::cout << "Processed requests: " << stream.get_processed_requests() << std::endl;
 
     return 0;
 }
+
