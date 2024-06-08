@@ -289,13 +289,13 @@ int main() {
         Phase phase(stream, 1, 3, 4, 2);
         phase.distribute_to_queues();
         phase.process_all_queues();
-
+        stream.clear_requests();
         phase.display_all_queues();
 
         std::cin >> z;
     }
     // Clear remaining requests and mark them as lost
-    stream.clear_requests();
+    
     std::cout << "Lost requests: " << stream.get_lost_requests() << std::endl;
     std::cout << "Processed requests: " << stream.get_processed_requests() << std::endl;
 
