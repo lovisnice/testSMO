@@ -3,6 +3,7 @@
 #include <random>
 #include <atomic>
 #include <vector>
+#include <memory>
 
 // Global sequence counter
 std::atomic<int> sequence_counter(0);
@@ -298,23 +299,26 @@ private:
 
 int main() {
     Stream stream;  // Create a stream
-    Generator generator1(stream);
-    Generator generator2(stream);
-    Generator generator3(stream);
+
+    int num_generators = 3; // Number of generators
+    std::vector<std::unique_ptr<Generator>> generators;
+    for (int i = 0; i < num_generators; ++i) {
+        generators.push_back(std::make_unique<Generator>(stream));
+    }
 
     int total_phases = 3; // Define the total number of phases
 
     // Create a vector of Phase objects with different number of channels for each phase
     std::vector<Phase> phases;
-    phases.emplace_back(stream, 1, 3, 4, 2, total_phases); // Phase 1 with 2 channels
-    phases.emplace_back(stream, 2, 3, 4, 3, total_phases); // Phase 2 with 3 channels
-    phases.emplace_back(stream, 3, 3, 4, 1, total_phases); // Phase 3 with 1 channel
+    phases.emplace_back(stream, 1, num_generators, 4, 2, total_phases); // Phase 1 with 2 channels
+    phases.emplace_back(stream, 2, num_generators, 4, 3, total_phases); // Phase 2 with 3 channels
+    phases.emplace_back(stream, 3, num_generators, 4, 4, total_phases); // Phase 3 with 1 channel
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 15; ++i) {
         // Generate several requests
-        generator1.generate_request();
-        generator2.generate_request();
-        generator3.generate_request();
+        for (auto& generator : generators) {
+            generator->generate_request();
+        }
 
         // Display the contents of the stream
         stream.display_requests();
@@ -330,7 +334,6 @@ int main() {
         }
 
         std::cout << "_____________________________" << std::endl;
-        stream.clear_requests();
     }
 
     // Clear remaining requests and mark them as lost for all phases
@@ -338,7 +341,7 @@ int main() {
         phase.clear_queues_in_phase();
     }
 
-    //stream.clear_requests();
+    stream.clear_requests();
 
     std::cout << "Lost requests: " << stream.get_lost_requests() << std::endl;
     std::cout << "Processed requests: " << stream.get_processed_requests() << std::endl;
