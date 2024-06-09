@@ -15,6 +15,7 @@ public:
     int get_sequence_number() const { return sequence_number; }
     int get_priority() const { return priority; }
     int get_phase() const { return phase; }
+    void set_phase(int new_phase) { phase = new_phase; }
 
 private:
     int sequence_number;
@@ -189,33 +190,40 @@ private:
 // Channel class definition
 class Channel {
 public:
-    Channel(Stream& stream) : stream(stream) {}
+    Channel(Stream& stream, int total_phases) : stream(stream), total_phases(total_phases) {}
 
     // Function to process a request from the queue
     void process_request(Queue& queue) {
         if (!queue.empty()) {
-            const auto& req = queue.front();
+            Request req = queue.front();
             std::cout << "(" << req.get_sequence_number() << ", " << req.get_priority() << ", " << req.get_phase() << ") ";
             queue.pop();
-            stream.set_processed_requests();
+            if (req.get_phase() < total_phases) {
+                req.set_phase(req.get_phase() + 1);
+                stream.add_request(req);
+            }
+            else {
+                stream.set_processed_requests();
+            }
         }
     }
 
 private:
     Stream& stream;
+    int total_phases;
 };
 
 // Phase class definition
 class Phase {
 public:
-    Phase(Stream& stream, int phase_number, int num_queues, int max_requests_per_queue, int num_channels)
-        : stream(stream), phase_number(phase_number), max_requests_per_queue(max_requests_per_queue), num_channels(num_channels)
+    Phase(Stream& stream, int phase_number, int num_queues, int max_requests_per_queue, int num_channels, int total_phases)
+        : stream(stream), phase_number(phase_number), max_requests_per_queue(max_requests_per_queue), num_channels(num_channels), total_phases(total_phases)
     {
         for (int i = 0; i < num_queues; ++i) {
             queues.emplace_back(stream, max_requests_per_queue);
         }
         for (int i = 0; i < num_channels; ++i) {
-            channels.emplace_back(stream);
+            channels.emplace_back(stream, total_phases);
         }
     }
 
@@ -273,11 +281,17 @@ public:
         }
     }
 
+    int get_phase_number()
+    {
+        return phase_number;
+    }
+
 private:
     Stream& stream;
     int phase_number;
     int max_requests_per_queue;
     int num_channels;
+    int total_phases;
     std::vector<Queue> queues; // Vector of queues for this phase
     std::vector<Channel> channels; // Vector of channels for this phase
 };
@@ -288,8 +302,15 @@ int main() {
     Generator generator2(stream);
     Generator generator3(stream);
 
-    Phase phase(stream, 1, 3, 4, 2);
-    for (int i = 0; i < 20; ++i) {
+    int total_phases = 3; // Define the total number of phases
+
+    // Create a vector of Phase objects with different number of channels for each phase
+    std::vector<Phase> phases;
+    phases.emplace_back(stream, 1, 3, 4, 2, total_phases); // Phase 1 with 2 channels
+    phases.emplace_back(stream, 2, 3, 4, 3, total_phases); // Phase 2 with 3 channels
+    phases.emplace_back(stream, 3, 3, 4, 1, total_phases); // Phase 3 with 1 channel
+
+    for (int i = 0; i < 3; ++i) {
         // Generate several requests
         generator1.generate_request();
         generator2.generate_request();
@@ -298,25 +319,29 @@ int main() {
         // Display the contents of the stream
         stream.display_requests();
 
-        // Create a Phase object with 3 queues, each with a maximum of 4 requests, and 2 channels
+        // Process each phase
+        for (auto& phase : phases) {
+            std::cout << "_____________________________" << std::endl;
+            std::cout << "PHASE " << phase.get_phase_number() << std::endl;
+            phase.distribute_to_queues();
+            phase.display_all_queues(); // Display queues after distribution
+            phase.process_requests_in_phase();
+            phase.display_all_queues(); // Display queues after processing
+        }
 
-        phase.distribute_to_queues();
-        phase.display_all_queues(); // Display queues after distribution
-
-        // Process a maximum of `num_channels` requests in this phase
-        phase.process_requests_in_phase();
-        phase.display_all_queues(); // Display queues after processing
-
-        // Clear remaining requests and mark them as lost
         std::cout << "_____________________________" << std::endl;
+        stream.clear_requests();
     }
 
-    // Clear remaining requests and mark them as lost for all queues
-    phase.clear_queues_in_phase();
-    stream.clear_requests();
+    // Clear remaining requests and mark them as lost for all phases
+    for (auto& phase : phases) {
+        phase.clear_queues_in_phase();
+    }
+
+    //stream.clear_requests();
+
     std::cout << "Lost requests: " << stream.get_lost_requests() << std::endl;
     std::cout << "Processed requests: " << stream.get_processed_requests() << std::endl;
 
     return 0;
 }
-
